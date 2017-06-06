@@ -132,10 +132,10 @@ df$temp=rowMeans(df[,i_temp1:(i_temp1+14)])
 # df$z_oxymethyldopa_conz<-scale(df$oxymethyldopa_conz, center = TRUE, scale = TRUE)
 # 
 
-
 # Create contrast data-set contol-placebo for all days
 dfd<-df[df$pla=="pla",]
 dfd$ratingdiff<-df$rating[df$pla=="con"]-df$rating[df$pla=="pla"]
+dfd$tempdiff<-df$temp[df$pla=="con"]-df$temp[df$pla=="pla"]
 
 dfd$expect<-df$erwa[df$pla=="con"] #Erwa/Effi ratings were done before/after con OR pla, depending on which was first
 a=df$erwa[df$pla=="pla"]
@@ -152,12 +152,21 @@ dfd2$expect_d1<-dfd$expect[dfd$day=="1"]
 dfd2$actual_d1<-dfd$actual[dfd$day=="1"]
 dfd2$expect_d2<-dfd$expect[dfd$day=="2"]
 dfd2$actual_d2<-dfd$actual[dfd$day=="2"]
+
 dfd2$rating_d1_con<-df$rating[df$day=="1"&df$pla=="con"]
 dfd2$rating_d1_pla<-df$rating[df$day=="1"&df$pla=="pla"]
 dfd2$rating_d2_con<-df$rating[df$day=="2"&df$pla=="con"]
 dfd2$rating_d2_pla<-df$rating[df$day=="2"&df$pla=="pla"]
 dfd2$ratingdiff_d1<-dfd$ratingdiff[dfd$day=="1"]
 dfd2$ratingdiff_d2<-dfd$ratingdiff[dfd$day=="2"]
+
+dfd2$temp_d1_con<-df$temp[df$day=="1"&df$pla=="con"]
+dfd2$temp_d1_pla<-df$temp[df$day=="1"&df$pla=="pla"]
+dfd2$temp_d2_con<-df$temp[df$day=="2"&df$pla=="con"]
+dfd2$temp_d2_pla<-df$temp[df$day=="2"&df$pla=="pla"]
+dfd2$tempdiff_d1<-dfd$tempdiff[dfd$day=="1"]
+dfd2$tempdiff_d2<-dfd$tempdiff[dfd$day=="2"]
+
 dfd2$z_ratingdiff_d2<-scale(dfd2$ratingdiff_d2, center = TRUE, scale = TRUE)
 
 # Create LONG Dataset
@@ -286,6 +295,14 @@ stats_cont(dfd2$ratingdiff_d1,dfd2$ldopa) # Conditioning strength
 stats_cont(dfd2$rating_d1_con,dfd2$ldopa)
 stats_cont(dfd2$rating_d1_pla,dfd2$ldopa)
 
+stats_cont(dfd2$tempdiff_d1,dfd2$ldopa) # Conditioning strength
+stats_cont(dfd2$temp_d1_con,dfd2$ldopa)
+stats_cont(dfd2$temp_d1_pla,dfd2$ldopa)
+
+sd(dfd2$ratingdiff_d1)
+sd(dfd2$rating_d1_con)
+sd(dfd2$rating_d1_pla)
+
 # Expectation and actuation ratings Day1
 stats_cont(dfd2$expect_d1,dfd2$ldopa)
 
@@ -313,6 +330,7 @@ stats_cont_paired(dfd2$actual_d1,dfd2$actual_d2) # paired change between days
 stats_cont(dfd2$t_med_to_bloodsample,dfd2$ldopa)
 stats_cont(dfd2$ldopa_conz,dfd2$ldopa)
 stats_cont(dfd2$oxymethyldopa_conz,dfd2$ldopa)
+sd(dfd2$ldopa_conz)
 
 prop_therapeutic=dfd2$ldopa_conz[dfd2$ldopa=="Levodopa"]>.2
 prop_therapeutic=sum(prop_therapeutic)/length(prop_therapeutic)
@@ -358,6 +376,9 @@ lm1<-lmp(ratingdiff_d2~(ldopa*male),
 Anova(lm1,Type="II")
 AIC(lm1)
 summary(lm1)
+stats_cont(dfd2$ratingdiff_d2[dfd2$male=='male'],dfd2$ldopa[dfd2$male=='male'])
+stats_cont(dfd2$ratingdiff_d2[dfd2$male=='female'],dfd2$ldopa[dfd2$male=='female'])
+
 
 # REPETITIONS
 dfld2$z_stimrep=scale(dfld2$stimrep, center = TRUE, scale = TRUE)
@@ -690,6 +711,7 @@ pr=ggplot(dfld2, aes(x=stimrep,y=ratingsalldiff,color=factor(ldopa),fill=factor(
   #geom_violin(adjust = 0.5,position=dodge,alpha=0.2,trim = FALSE)+ #
   #geom_hline(aes(yintercept=0),color="grey")+
   #geom_abline(intercept=a[1],slope=a[3])+
+  geom_line(stat = "summary", fun.y=bmean)+
   geom_point(stat = "summary", fun.y=bmean)+
   #geom_errorbar(stat = "summary", fun.y=bmean,fun.ymin=booty_lo,  fun.ymax=booty_hi,position=dodge, width=0.25)+
   #Regression line for each participant
@@ -760,7 +782,7 @@ tcr=ggplot(dfl2, aes(x=stimrep,y=ratingsall,color=factor(ldopa):factor(wirk),fil
   labs(y ="Pain Ratings (points VAS)", x="Stimulus repetition")+
   scale_fill_manual(values =  groupcolor,labels= grouplabels)+
   scale_color_manual(values =  groupcolor,labels= grouplabels)+
-  scale_y_continuous(breaks=c(-4, 0, 4, 8))+ #,
+  scale_y_continuous(breaks=c(50, 60, 70, 80))+ #,
   scale_x_continuous(limits = c(1,15), breaks=c(1,8,15))+
   theme(aspect.ratio = 1/sqrt(2))+ #fix plot size
   theme(axis.text=element_text(size=12), #fix axis font size
@@ -846,3 +868,6 @@ nw=ggplot(dfd2, aes(x=ratingdiff_d2,y=side_effects_all,color=factor(ldopa),fill=
 nw
 
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Side_Effects_Placebo_Effect.pdf",nw,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.5)
+
+
+

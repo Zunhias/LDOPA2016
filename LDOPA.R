@@ -103,6 +103,9 @@ df <- within(df, {
   #edu <- factor(edu, levels = 0:4, labels = c("none", "basic","middle","high","uni"))
 })
 
+# Exclude "." from column names (introduced during import)
+names(df) <- gsub(x = names(df), pattern = "\\.", replacement = "")  
+
 # Replace NaN's by NA... otherwise problems.
 df[is.na(df)]=NA 
 
@@ -393,6 +396,75 @@ summary(lmm1)
 AIC(lmm1)
 plot(dfld2$ratingsalldiff,predict(lmm1))
 
+
+
+###### Quick and dirty plots of sequence vs gender
+pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'female')
+con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'female')
+
+out=list()
+for (i in seq(15)){
+  currrating = df[,paste("ratings_",i, sep="")]
+  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
+  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
+}
+
+y=unlist(lapply(out,"[[",1))
+cilo=unlist(lapply(out,"[[",2))
+cihi=unlist(lapply(out,"[[",3))
+plot(y,
+     ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
+     xlab="Repetition",
+     ylim=c(-20, 20))
+segments(seq(15),cilo,seq(15),cihi)
+title(main="Women")
+abline(0,0)
+fname='/Users/matthiaszunhammer/Desktop/Female_Placebo_Effect.pdf'
+dev.copy2pdf(file=fname, width = 7, height = 5)
+dev.off()
+
+
+###### Quick and dirty plots of sequence vs gender vs group
+pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Placebo"
+con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Placebo"
+
+out=list()
+for (i in seq(15)){
+  currrating = df[,paste("ratings_",i, sep="")]
+  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
+  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
+}
+y_pla=unlist(lapply(out,"[[",1))
+cilo_pla=unlist(lapply(out,"[[",2))
+cihi_pla=unlist(lapply(out,"[[",3))
+pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Levodopa"
+con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Levodopa"
+out=list()
+for (i in seq(15)){
+  currrating = df[,paste("ratings_",i, sep="")]
+  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
+  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
+}
+y_dopa=unlist(lapply(out,"[[",1))
+cilo_dopa=unlist(lapply(out,"[[",2))
+cihi_dopa=unlist(lapply(out,"[[",3))
+plot(seq(15)-0.1,y_pla,
+       ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
+       xlab="Repetition",
+       ylim=c(-20, 20))
+points(seq(15)+0.1,y_dopa,
+     ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
+     xlab="Repetition",
+     ylim=c(-20, 20),
+     col="red")
+segments(seq(15)-0.1,cilo_pla,seq(15)-0.1,cihi_pla)
+segments(seq(15)+0.1,cilo_dopa,seq(15)+0.1,cihi_dopa,col="red")
+title(main="Male Control vs Placebo (red) Group")
+abline(0,0)
+fname='/Users/matthiaszunhammer/Desktop/Male_Placebo_Effect_by_group.pdf'
+dev.copy2pdf(file=fname, width = 7, height = 5)
+dev.off()
+
 ####################################
 #### Placebo stats linear model ####
 ####################################
@@ -427,7 +499,6 @@ etaSquared(lm1,type=2,anova=TRUE)
 # Graph L-DOPA VS PLACEBO
 #histogram(~dfd2$ratingdiff_d2|dfd2$male:dfd2$ldopa)
 
-
 ####################################
 #### Placebo stats linear mixed model ####
 ####################################
@@ -441,6 +512,94 @@ summary(lmm1)
 
 # For sub-sample selection
 #dfd2=dfd2[!(dfd2$ratingdiff_d2<0|dfd2$male=="male"),] #Excluded: Temperature data for day 3 were entered ambiguously/not to be found.
+
+
+### MAIN RESULTS PLA Effect vs LDOPA
+groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
+grouplabels=c("Placebo",
+              "Levodopa")
+dodge <- position_dodge(width=0.5)
+jdodge <-position_jitterdodge(jitter.width=0.5,dodge.width=0.5)
+g=ggplot(dfd2, aes(x=factor(ldopa),y=ratingdiff_d2, fill=ldopa))+ #,color=male,fill=male
+  geom_hline(aes(yintercept=0),color="grey")+
+  #geom_violin(adjust = 0.5,position=dodge,alpha=0.2,trim = FALSE)+ #
+  geom_dotplot(position=dodge, binaxis='y',binwidth=1.8, stackdir='center', color=NA)+ #, binwidth=1 ,alpha=0.15
+  geom_point(stat = "summary", fun.y=bmean,position=dodge)+
+  geom_errorbar(stat = "summary", fun.y=bmean,fun.ymin=booty_lo,  fun.ymax=booty_hi,position=dodge, width=0.25)+
+  labs(y ="Placebo Effect (points VAS) ± 95 % CI",x="Group")+
+  scale_y_continuous(breaks=c(-30, -15, 0, 15, 30),limits = c(-30, 30))+
+  scale_fill_manual("Group:\n",values =  groupcolor,
+                    labels= grouplabels)+
+  theme(aspect.ratio = 1/sqrt(2))+ #fix plot size
+  theme(axis.text=element_text(size=12), #fix axis font size
+        axis.title=element_text(size=12))+ #fix axis title font size
+  theme(strip.text.x = element_text(size = 12,face="bold"))+
+  theme(axis.ticks =element_blank(),
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_blank(), #element_line(colour = "#555555"), #fix grid display
+        panel.grid.minor.y = element_blank(), #fix grid display
+        panel.grid.major.x = element_blank(),
+        axis.title.x= element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = 'transparent'),
+        panel.background = element_blank(),
+        plot.title = element_text(size = 14,face="bold"),
+        plot.margin = unit(c(0.1,0.1,0.1,0.1),"null"))+
+  theme(legend.position=c(1.75,0.5),                 #place legend
+        legend.direction="vertical",                    #stack format
+        legend.key=element_rect(fill = "transparent"),  #remove grey legend bg
+        legend.key.size=unit(1.5,"cm"),                 #size of legend bobbles
+        legend.title = element_text(size = 14,face="bold"),
+        legend.text = element_text(size = 12))+
+  #ggtitle("Placebo vs Group")+# Add inital of investigators first name as graph title
+  coord_fixed(ratio=0.20)
+g
+ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_2.eps",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
+
+### MAIN RESULTS PLA Effect vs LDOPA by Gender
+groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
+grouplabels=c("Placebo",
+              "Levodopa")
+dodge <- position_dodge(width=0.5)
+jdodge <-position_jitterdodge(jitter.width=0.5,dodge.width=0.5)
+g=ggplot(dfd2, aes(x=male,y=ratingdiff_d2, fill=factor(ldopa)))+ #,color=male,fill=male
+  geom_hline(aes(yintercept=0),color="grey")+
+  #geom_violin(adjust = 0.5,position=dodge,alpha=0.2,trim = FALSE)+ #
+  geom_dotplot(position=dodge, binaxis='y',binwidth=1.8, stackdir='center', color=NA)+ #, binwidth=1 ,alpha=0.15
+  geom_point(stat = "summary", fun.y=bmean,position=dodge)+
+  geom_errorbar(stat = "summary", fun.y=bmean,fun.ymin=booty_lo,  fun.ymax=booty_hi,position=dodge, width=0.25)+
+  labs(y ="Placebo Effect (points VAS) ± 95 % CI",x="Group")+
+  scale_y_continuous(breaks=c(-30, -15, 0, 15, 30),limits = c(-30, 30))+
+  scale_fill_manual("Group:\n",values =  groupcolor,
+                    labels= grouplabels)+
+  theme(aspect.ratio = 1/sqrt(2))+ #fix plot size
+  theme(axis.text=element_text(size=12), #fix axis font size
+        axis.title=element_text(size=12))+ #fix axis title font size
+  theme(strip.text.x = element_text(size = 12,face="bold"))+
+  theme(axis.ticks =element_blank(),
+        axis.line = element_line(colour = "black"),
+        panel.grid.major.y = element_blank(), #element_line(colour = "#555555"), #fix grid display
+        panel.grid.minor.y = element_blank(), #fix grid display
+        panel.grid.major.x = element_blank(),
+        axis.title.x= element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_rect(fill = 'transparent'),
+        panel.background = element_blank(),
+        plot.title = element_text(size = 14,face="bold"),
+        plot.margin = unit(c(0.1,0.1,0.1,0.1),"null"))+
+  # theme(legend.position=c(1.75,0.5),                 #place legend
+  #       legend.direction="vertical",                    #stack format
+  #       legend.key=element_rect(fill = "transparent"),  #remove grey legend bg
+  #       legend.key.size=unit(1.5,"cm"),                 #size of legend bobbles
+  #       legend.title = element_text(size = 14,face="bold"),
+  #       legend.text = element_text(size = 12))+
+  #ggtitle("Placebo vs Group")+# Add inital of investigators first name as graph title
+  coord_fixed(ratio=0.20)
+g
+ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_3.svg",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
+
+
+
 
 ### MAIN RESULTS PLA VS PLA Belief
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
@@ -482,7 +641,7 @@ g=ggplot(dfd2, aes(x=factor(subj_LDOPA),y=ratingdiff_d2, fill=ldopa))+ #,color=m
   #ggtitle("Placebo vs Group")+# Add inital of investigators first name as graph title
   coord_fixed(ratio=0.20)
 g
-ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_1.eps",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
+ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_2.eps",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
 
 ### MAIN RESULTS PLA VS Levodopa Concentrations
 grouplabels=c("Placebo",
@@ -533,7 +692,7 @@ xlabels=c("Control Site",
               "Placebo Site")
 dodge <- position_dodge(width=0.5)
 jdodge <-position_jitterdodge(jitter.width=0.5,dodge.width=0.5)
-g2=ggplot(df2, aes(x=ldopa,y=rating, color= factor(wirk),fill= factor(wirk)))+ #,color=male,fill=male
+g2=ggplot(df2, aes(x=ldopa,y=rating, color= factor(wirk),fill= factor(wirk)))+ 
   geom_hline(aes(yintercept=0),color="grey")+
   #geom_violin(adjust = 0.5,position=dodge,alpha=0.2,trim = FALSE)+ #
   geom_dotplot(position=dodge, binaxis='y',binwidth=1.8, stackdir='center',color=NA)+ #, binwidth=1 ,alpha=0.15

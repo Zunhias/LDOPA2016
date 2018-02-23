@@ -45,12 +45,43 @@ booty_hi <- function(y,d) {
   return(ci)
 }
 
+bmeandiff <- function(y,d=NULL,sim=NULL,group) {
+  if(length(d)==0){d=1:length(y)}
+  return(diff(tapply(y[d], group[d], mean, na.rm=TRUE)))
+}
+boot_diff_lo <- function(y,group) {
+  if(length(unique(y)) > 1) {
+    b <- boot(data= y, statistic= bmeandiff, strata= group, R= resamples, group=group)
+    bci <- boot.ci(b,conf = 0.95,type="bca")
+    ci<-bci$bca[4]
+  }
+  else 
+  {ci<- bmean(y)
+  }
+  return(ci)
+}
+boot_diff_hi <- function(y,group) {
+  if(length(unique(y)) > 1) {
+    b <- boot(data= y, statistic= bmeandiff, strata= group, R= resamples, group=group)
+    bci <- boot.ci(b,conf = 0.95,type="bca")
+    ci<-bci$bca[5]
+  }
+  else 
+  {ci<- bmean(y)
+  }
+  return(ci)
+}
 
 stats_cont <- function(y,group) {
   #overall mean
   o_mean=signif(bmean(y), digits = 3)
   o_cilo=signif(booty_lo(y), digits = 3)
   o_cihi=signif(booty_hi(y), digits = 3)
+  #overall mean difference
+  o_mean_diff=signif(bmeandiff(y,,,group), digits = 3)
+  o_cilo_diff=signif(boot_diff_lo(y,group), digits = 3)
+  o_cihi_diff=signif(boot_diff_hi(y,group), digits = 3)
+  
   #group stats
   gr_mean=signif(by(y,group,bmean), digits = 3)
   gr_cilo=signif(by(y,group,booty_lo), digits = 3)
@@ -62,11 +93,11 @@ stats_cont <- function(y,group) {
                control=permControl(nmc=resamples))
   g=cohen.d(y~group,hedges.correction=TRUE)
   return(list(cbind(o_mean,o_cilo,o_cihi),
+              cbind(o_mean_diff,o_cilo_diff,o_cihi_diff),
               cbind(gr_mean,gr_cilo,gr_cihi),
               stat,
               g))
 }
-
 
 stats_cont_paired <- function(y1,y2) {
   #mean diff
@@ -122,12 +153,20 @@ df$HPT_d1<-rowMeans(df[,grep("^HPT._...._pre_d1", colnames(df))],na.rm=1)
 df$HPT_d2<-rowMeans(df[,grep("^HPT._...._pre_d2", colnames(df))],na.rm=1)
 
 # Create overall temp
-i_temp1=which(colnames(df)=="temps_.1")
+i_temp1=which(colnames(df)=="temps_1")
 df$temp=rowMeans(df[,i_temp1:(i_temp1+14)])
 
-# # To exclude participants with low data quality.
-# #df=df[!(df$unclear==1&df$male==1),]
-# # z-Transformed versions of continuous data
+#### OUTLIERS: exclude participants with unclear status of data quality as determined in an evaluation before unblinding ###
+# i.e. potential outliers
+'Subject IDs with unclear data quality:'
+unique(df[(df$unclear==1),'ids'])
+'Subject IDs with unclear data quality by treatment condition:'
+table(df[(df$unclear==1) & (df$day==2) & (df$wirk==0),'ldopa'])
+# Comment for analysis including outliers (does not make a big difference)
+df=df[!(df$unclear==1),]
+
+
+#### z-Transformed versions of continuous data ####
 # df$z_rating=as.numeric(scale(df$rating, center = TRUE, scale = TRUE))
 # df$z_temp=as.numeric(scale(df$temp, center = TRUE, scale = TRUE))
 # df$z_erwa=as.numeric(scale(df$erwa, center = TRUE, scale = TRUE))
@@ -135,7 +174,7 @@ df$temp=rowMeans(df[,i_temp1:(i_temp1+14)])
 # df$z_oxymethyldopa_conz<-scale(df$oxymethyldopa_conz, center = TRUE, scale = TRUE)
 # 
 
-# Create contrast data-set contol-placebo for all days
+#### Create contrast data-set contol-placebo for all days ####
 dfd<-df[df$pla=="pla",]
 dfd$ratingdiff<-df$rating[df$pla=="con"]-df$rating[df$pla=="pla"]
 dfd$tempdiff<-df$temp[df$pla=="con"]-df$temp[df$pla=="pla"]
@@ -144,17 +183,17 @@ dfd$expect<-df$erwa[df$pla=="con"] #Erwa/Effi ratings were done before/after con
 a=df$erwa[df$pla=="pla"]
 dfd$expect[is.na(df$erwa[df$pla=="con"])]=a[is.na(df$erwa[df$pla=="con"])]
 
-dfd$actual<-df$effi[df$pla=="con"] #Erwa/Effi ratings were done before/after con OR pla, depending on which was first
+dfd$efficacy<-df$effi[df$pla=="con"] #Erwa/Effi ratings were done before/after con OR pla, depending on which was first
 a=df$effi[df$pla=="pla"]
-dfd$actual[is.na(df$effi[df$pla=="con"])]=a[is.na(df$effi[df$pla=="con"])]
+dfd$efficacy[is.na(df$effi[df$pla=="con"])]=a[is.na(df$effi[df$pla=="con"])]
 
 # Create contrast data-set contol-placebo for days 2
 df2<-df[df$day=="2",]
 dfd2<-dfd[dfd$day=="2",]
 dfd2$expect_d1<-dfd$expect[dfd$day=="1"]
-dfd2$actual_d1<-dfd$actual[dfd$day=="1"]
+dfd2$efficacy_d1<-dfd$efficacy[dfd$day=="1"]
 dfd2$expect_d2<-dfd$expect[dfd$day=="2"]
-dfd2$actual_d2<-dfd$actual[dfd$day=="2"]
+dfd2$efficacy_d2<-dfd$efficacy[dfd$day=="2"]
 
 dfd2$rating_d1_con<-df$rating[df$day=="1"&df$pla=="con"]
 dfd2$rating_d1_pla<-df$rating[df$day=="1"&df$pla=="pla"]
@@ -172,13 +211,13 @@ dfd2$tempdiff_d2<-dfd$tempdiff[dfd$day=="2"]
 
 dfd2$z_ratingdiff_d2<-scale(dfd2$ratingdiff_d2, center = TRUE, scale = TRUE)
 
-# Create LONG Dataset
+#### Create LONG Dataset ####
 #allratings<-df[,grep("^ratings_.\\d", colnames(df))]
 dfl=reshape(df, 
             varying = list(
-              grep("^ratings_.\\d", colnames(df)),
-              grep("^duration_.\\d", colnames(df)),
-              grep("^temps_.\\d", colnames(df))),
+              grep("^ratings_\\d", colnames(df)),
+              grep("^duration_\\d", colnames(df)),
+              grep("^temps_\\d", colnames(df))),
             v.names = c("ratingsall","durationsall","tempsall"),
             timevar = "stimrep", 
             times = 1:15, 
@@ -198,6 +237,7 @@ dfd2$t_med_to_bloodsample=(dfd2$time_d1_end-dfd2$time_med)*24*60
 
 
 #### DESCRIPTIVE results, Paragraph1, TABLE S1: ####
+# Should be reported for full sample
 # N
 by(dfd2$ids,dfd2$ldopa,length)
 #by(dfd2$unclear,dfd2$ldopa,sum)
@@ -294,13 +334,13 @@ chisq.test(guess_med_corr)
 #### DAY 1 conditioning, Results Paragraph 2, TABLE S2: ####
 # DAY 1 RATING RESULTS
 # Pain Ratings Day 1
+stats_cont(dfd2$temp_d1_con,dfd2$ldopa)
+stats_cont(dfd2$temp_d1_pla,dfd2$ldopa)
+stats_cont(dfd2$tempdiff_d1,dfd2$ldopa) # Group-differences in conditioning temperature-differences 
+
 stats_cont(dfd2$ratingdiff_d1,dfd2$ldopa) # Conditioning strength
 stats_cont(dfd2$rating_d1_con,dfd2$ldopa)
 stats_cont(dfd2$rating_d1_pla,dfd2$ldopa)
-
-stats_cont(dfd2$tempdiff_d1,dfd2$ldopa) # Conditioning strength
-stats_cont(dfd2$temp_d1_con,dfd2$ldopa)
-stats_cont(dfd2$temp_d1_pla,dfd2$ldopa)
 
 sd(dfd2$ratingdiff_d1)
 sd(dfd2$rating_d1_con)
@@ -308,37 +348,47 @@ sd(dfd2$rating_d1_pla)
 
 # Expectation and actuation ratings Day1
 stats_cont(dfd2$expect_d1,dfd2$ldopa)
-
+# EXPECTATION CHANCE D1>D2
 stats_cont_paired(dfd2$expect_d1,dfd2$expect_d2)
 
-# Actual Day1
-stats_cont(dfd2$actual_d1,dfd2$ldopa)
+# efficacy Day1 ("actuation ratings", "post-treatment efficacy ratings")
+stats_cont(dfd2$efficacy_d1,dfd2$ldopa)
 
-
-#### DAY 2 Testing, Results Paragraph 3, TABLE S4: ####
-# Pain Ratings Day 2 (within subject)
-stats_cont_paired(dfd2$rating_d2_con,dfd2$rating_d2_pla)
-# Pain ratings Day 2
-stats_cont(dfd2$ratingdiff_d2,dfd2$ldopa) # Conditioning strength
-stats_cont(dfd2$rating_d2_con,dfd2$ldopa)
-stats_cont(dfd2$rating_d2_pla,dfd2$ldopa)
-# Expectations and actuation Day2
-stats_cont(dfd2$expect,dfd2$ldopa)
-stats_cont(dfd2$actual,dfd2$ldopa)
-stats_cont_paired(dfd2$actual_d1,dfd2$actual_d2) # paired change between days
-
-#### MAIN RESULTS LEVODOPA Paragraph 4, Figures 2 and 3 ####
-
+# TABLE S3 pharmacological results
 #medication blood levels
 stats_cont(dfd2$t_med_to_bloodsample,dfd2$ldopa)
+range(dfd2$t_med_to_bloodsample)
 stats_cont(dfd2$ldopa_conz,dfd2$ldopa)
 stats_cont(dfd2$oxymethyldopa_conz,dfd2$ldopa)
 sd(dfd2$ldopa_conz)
 
-prop_therapeutic=dfd2$ldopa_conz[dfd2$ldopa=="Levodopa"]>.2
-prop_therapeutic=sum(prop_therapeutic)/length(prop_therapeutic)
+#### DAY 2 Testing, Results Paragraph 3, TABLE S4: ####
 
-#medication blood levels vs placebo
+
+# PLACEBO EFFECT
+stats_cont_paired(dfd2$rating_d2_con,dfd2$rating_d2_pla)
+BF=ttestBF(dfd2$rating_d2_con,dfd2$rating_d2_pla,paired=TRUE)
+1/BF
+# Pain ratings Day 2
+
+# L-DOPA on PLACEBO EFFECT
+stats_cont(dfd2$ratingdiff_d2,dfd2$ldopa) 
+BF=ttestBF(formula = ratingdiff_d2 ~ ldopa,
+        data=dfd2,
+        paired=FALSE)
+1/BF
+
+stats_cont(dfd2$rating_d2_con,dfd2$ldopa)
+stats_cont(dfd2$rating_d2_pla,dfd2$ldopa)
+
+# Expectations and actuation Day2
+stats_cont(dfd2$expect,dfd2$ldopa)
+stats_cont(dfd2$efficacy,dfd2$ldopa)
+stats_cont_paired(dfd2$efficacy_d1,dfd2$efficacy_d2) # paired change between days
+
+#### LEVODOPA Paragraph 4, Figures 2 and 3 ####
+
+#medication blood levels day vs placebo
 dfd2$z_ratingdiff_d2=as.numeric(scale(dfd2$ratingdiff_d2, center = TRUE, scale = TRUE))
 dfd2$z_ldopa_conz=as.numeric(scale(dfd2$ldopa_conz, center = TRUE, scale = TRUE))
 
@@ -346,31 +396,13 @@ lm1<-lm(z_ratingdiff_d2~z_ldopa_conz,
         data=dfd2[dfd2$ldopa=="Levodopa",],na.action =na.exclude)
 summary(lm1)
 
-# MAIN RESULTS: Rating stats
-stats_cont_paired(dfd2$rating_d2_con,dfd2$rating_d2_pla) # paired change between days
-bf1=ttestBF(dfd2$rating_d2_con,dfd2$rating_d2_pla,paired=TRUE)
-bf1
-1/bf1
-
-stats_cont(dfd2$ratingdiff_d2,dfd2$ldopa)
-bf2=ttestBF(formula=ratingdiff_d2~ldopa,data=dfd2)
-bf2
-1/bf2
-
-stats_cont(dfd2$rating_d2_con,dfd2$ldopa)
-stats_cont(dfd2$rating_d2_pla,dfd2$ldopa)
-
 #### Exploratory Paragraph ####
 # Results sans suspected outliers
-stats_cont_paired(dfd2$rating_d2_con[!dfd2$unclear],dfd2$rating_d2_pla[!dfd2$unclear]) # paired change between days
-bf1_out=ttestBF(dfd2$rating_d2_con[!dfd2$unclear],dfd2$rating_d2_pla[!dfd2$unclear],paired=TRUE)
-bf1_out
-1/bf1_out
-
-stats_cont(dfd2$ratingdiff_d2[!dfd2$unclear],dfd2$ldopa[!dfd2$unclear])
-bf2_out=ttestBF(formula=ratingdiff_d2~ldopa,data=dfd2[!dfd2$unclear,])
-bf2_out
-1/bf2_out
+# stats_cont_paired(dfd2$rating_d2_con[!dfd2$unclear],dfd2$rating_d2_pla[!dfd2$unclear]) # paired change between days
+# ttestBF(dfd2$rating_d2_con[!dfd2$unclear],dfd2$rating_d2_pla[!dfd2$unclear],paired=TRUE)
+# 
+# stats_cont(dfd2$ratingdiff_d2[!dfd2$unclear],dfd2$ldopa[!dfd2$unclear])
+# ttestBF(formula=ratingdiff_d2~ldopa,data=dfd2[!dfd2$unclear,])
 
 # Results ANOVA gender
 lm1<-lmp(ratingdiff_d2~(ldopa*male),
@@ -379,142 +411,47 @@ lm1<-lmp(ratingdiff_d2~(ldopa*male),
 Anova(lm1,Type="II")
 AIC(lm1)
 summary(lm1)
+
+#MAIN EFFECT GENDER
+stats_cont(dfd2$ratingdiff_d2,dfd2$male)
+
+
+# MALE FOCUS
 stats_cont(dfd2$ratingdiff_d2[dfd2$male=='male'],dfd2$ldopa[dfd2$male=='male'])
+stats_cont_paired(dfd2$rating_d2_con[dfd2$male=='male'],dfd2$rating_d2_pla[dfd2$male=='male'])
+
+# FEMALE FOCUS
 stats_cont(dfd2$ratingdiff_d2[dfd2$male=='female'],dfd2$ldopa[dfd2$male=='female'])
+ttestBF(formula = ratingdiff_d2 ~ ldopa,
+        data=dfd2[dfd2$male=='female',],
+        paired=FALSE)
+stats_cont_paired(dfd2$rating_d2_con[dfd2$male=='female'],dfd2$rating_d2_pla[dfd2$male=='female'])
+ttestBF(dfd2$rating_d2_con[dfd2$male=='female'],dfd2$rating_d2_pla[dfd2$male=='female'],
+        paired=TRUE)
 
 
-# REPETITIONS
-dfld2$z_stimrep=scale(dfld2$stimrep, center = TRUE, scale = TRUE)
-dfld2$z_ratingsalldiff=scale(dfld2$ratingsalldiff, center = TRUE, scale = TRUE)
+#### LMER TESTING STIMULUS REPETITIONS ####
+# Commented out, since centering/scaling continuous variables does not affect estimation/results
+#dfld2$z_stimrep=scale(dfld2$stimrep, center = TRUE, scale = TRUE)
+#dfld2$z_ratingsalldiff=scale(dfld2$ratingsalldiff, center = TRUE, scale = TRUE)
 
-lmm1<-lmer(ratingsalldiff~dfld2$ldopa*z_stimrep+(1+z_stimrep| ids),
+lmm1<-lmer(ratingsalldiff~dfld2$ldopa*stimrep+(1+stimrep| ids),
            data=dfld2,verbose=TRUE,
-           control=lmerControl(optCtrl=list(maxfun=10000)),
+           control=lmerControl(optCtrl=list(maxfun=10000),check.conv.singular="warning"),
            na.action =na.exclude)
-Anova(lmm1,type='III')
-summary(lmm1)
+Anova(lmm1,type='II')
+lmm1_summary=summary(lmm1)
+lmm1_coef=lmm1_summary$coefficients
+lmm1_coef[,"Estimate"]["stimrep"]-1.96*lmm1_coef[,"Std. Error"]["stimrep"]
+lmm1_coef[,"Estimate"]["stimrep"]+1.96*lmm1_coef[,"Std. Error"]["stimrep"]
+lmm1_coef[,"Estimate"]["stimrep"]-1.96*lmm1_coef[,"Std. Error"]["stimrep"]
+lmm1_coef[,"Estimate"]["dfld2$ldopa1:stimrep"]-1.96*lmm1_coef[,"Std. Error"]["dfld2$ldopa1:stimrep"]
+lmm1_coef[,"Estimate"]["dfld2$ldopa1:stimrep"]+1.96*lmm1_coef[,"Std. Error"]["dfld2$ldopa1:stimrep"]
+
 AIC(lmm1)
 plot(dfld2$ratingsalldiff,predict(lmm1))
 
-
-
-###### Quick and dirty plots of sequence vs gender
-pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'female')
-con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'female')
-
-out=list()
-for (i in seq(15)){
-  currrating = df[,paste("ratings_",i, sep="")]
-  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
-  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
-}
-
-y=unlist(lapply(out,"[[",1))
-cilo=unlist(lapply(out,"[[",2))
-cihi=unlist(lapply(out,"[[",3))
-plot(y,
-     ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
-     xlab="Repetition",
-     ylim=c(-20, 20))
-segments(seq(15),cilo,seq(15),cihi)
-title(main="Women")
-abline(0,0)
-fname='/Users/matthiaszunhammer/Desktop/Female_Placebo_Effect.pdf'
-dev.copy2pdf(file=fname, width = 7, height = 5)
-dev.off()
-
-
-###### Quick and dirty plots of sequence vs gender vs group
-pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Placebo"
-con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Placebo"
-
-out=list()
-for (i in seq(15)){
-  currrating = df[,paste("ratings_",i, sep="")]
-  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
-  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
-}
-y_pla=unlist(lapply(out,"[[",1))
-cilo_pla=unlist(lapply(out,"[[",2))
-cihi_pla=unlist(lapply(out,"[[",3))
-pla_test=(df$wirk == 1) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Levodopa"
-con_test=(df$wirk == 0) & (df$day == 2) & (df$male == 'male') & df$ldopa == "Levodopa"
-out=list()
-for (i in seq(15)){
-  currrating = df[,paste("ratings_",i, sep="")]
-  print(stats_cont_paired(currrating[con_test],currrating[pla_test]))
-  out[i]=stats_cont_paired(currrating[con_test],currrating[pla_test])
-}
-y_dopa=unlist(lapply(out,"[[",1))
-cilo_dopa=unlist(lapply(out,"[[",2))
-cihi_dopa=unlist(lapply(out,"[[",3))
-plot(seq(15)-0.1,y_pla,
-       ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
-       xlab="Repetition",
-       ylim=c(-20, 20))
-points(seq(15)+0.1,y_dopa,
-     ylab="Placebo effect (pain ratings con-pla) ± 95%CI",
-     xlab="Repetition",
-     ylim=c(-20, 20),
-     col="red")
-segments(seq(15)-0.1,cilo_pla,seq(15)-0.1,cihi_pla)
-segments(seq(15)+0.1,cilo_dopa,seq(15)+0.1,cihi_dopa,col="red")
-title(main="Male Control vs Placebo (red) Group")
-abline(0,0)
-fname='/Users/matthiaszunhammer/Desktop/Male_Placebo_Effect_by_group.pdf'
-dev.copy2pdf(file=fname, width = 7, height = 5)
-dev.off()
-
-####################################
-#### Placebo stats linear model ####
-####################################
-#lm1<-lmp(ratingdiff_d2~ldopa_conz+male,
-#        data=dfd2,na.action =na.exclude)
-lm1<-lmp(ratingdiff_d2~ldopa_conz+male+expect_d2+temp,
-         data=dfd2,na.action =na.exclude)
-AIC(lm1)
-summary(lm1)
-anova(lm1)
-confint(lm1)
-alias(lm1)
-Anova(lm1,type='III')
-etaSquared(lm1,type=2,anova=TRUE)
-
-cor.test(dfd2$oxymethyldopa_conz[dfd2$ldopa=='Levodopa'],
-         dfd2$ratingdiff_d2[dfd2$ldopa=='Levodopa'],
-         method='pearson')
-
-etaSquared(lm1,type=2,anova=TRUE)
-# MISC
-# HPT Day1
-#stats_cont(dfd2$HPT_d1,dfd2$ldopa)
-# HPT Day2
-#stats_cont(dfd2$HPT_d2,dfd2$ldopa)
-# alk
-#stats_cont(dfd2$alk_p_w,dfd2$ldopa)
-# food
-#food=table(dfd2$food,dfd2$ldopa)
-#prop.table(food)
-
-# Graph L-DOPA VS PLACEBO
-#histogram(~dfd2$ratingdiff_d2|dfd2$male:dfd2$ldopa)
-
-####################################
-#### Placebo stats linear mixed model ####
-####################################
-
-lmm1<-lmer(rating~pla+ldopa_conz+male+stimrep+(1+pla| ids),
-        data=dfl2,
-        na.action =na.exclude)
-summary(lmm1)
-
-#### Plots ####
-
-# For sub-sample selection
-#dfd2=dfd2[!(dfd2$ratingdiff_d2<0|dfd2$male=="male"),] #Excluded: Temperature data for day 3 were entered ambiguously/not to be found.
-
-
-### MAIN RESULTS PLA Effect vs LDOPA
+#### PLOT PLA Effect vs LDOPA ####
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
 grouplabels=c("Placebo",
               "Levodopa")
@@ -556,7 +493,7 @@ g=ggplot(dfd2, aes(x=factor(ldopa),y=ratingdiff_d2, fill=ldopa))+ #,color=male,f
 g
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_2.eps",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
 
-### MAIN RESULTS PLA Effect vs LDOPA by Gender
+#### PLOT  PLA Effect vs LDOPA by Gender ####
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
 grouplabels=c("Placebo",
               "Levodopa")
@@ -599,9 +536,7 @@ g
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_3.svg",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
 
 
-
-
-### MAIN RESULTS PLA VS PLA Belief
+###ä PLOT PLA VS PLA Belief ####
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
 grouplabels=c("Placebo",
               "Levodopa")
@@ -643,7 +578,7 @@ g=ggplot(dfd2, aes(x=factor(subj_LDOPA),y=ratingdiff_d2, fill=ldopa))+ #,color=m
 g
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_2.eps",g,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.25)
 
-### MAIN RESULTS PLA VS Levodopa Concentrations
+#### PLOT RESULTS PLA VS Levodopa Concentrations ####
 grouplabels=c("Placebo",
               "L-Dopa")
 g=ggplot(dfd2, aes(x=ldopa_conz,y=ratingdiff_d2, fill=ldopa))+ #,color=male,fill=male
@@ -681,7 +616,7 @@ g=ggplot(dfd2, aes(x=ldopa_conz,y=ratingdiff_d2, fill=ldopa))+ #,color=male,fill
   coord_fixed(ratio=0.20)
 g
 
-### MAIN RESULTS PLA VS CON
+#### PLOT MAIN RESULTS PLA VS CON ####
 
 dotcolor=c(rgb(.8,.8,.8),rgb(.627,.706,1))
 collabels=c("No Levodopa",
@@ -732,7 +667,7 @@ g2=ggplot(df2, aes(x=ldopa,y=rating, color= factor(wirk),fill= factor(wirk)))+
 g2
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_1_ersatz.eps",g2,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.5)
 
-### MAIN RESULTS SIDE EFFECTS
+#### PLOT RESULTS SIDE EFFECTS ####
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
 grouplabels=c("Placebo",
               "Levodopa")
@@ -777,24 +712,7 @@ ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_1_side_effects.
 
 
 
-##### ANALYSIS OF PLACEBO-EXTINCTION ######
-
-# Create simple regression coefficients
-dfd2$extinction=NA
-uniids=unique(dfld2$ids)
-for (i in 1:length(uniids)) {
-  d=dfld2[dfld2$ids==uniids[i],]
-  lm<-lm(data=d[3:nrow(d),], ratingsalldiff~stimrep, na.action =na.exclude)
-  #dfd2$extinction[id]=as.numeric(lm$coefficients[2])
-  dfd2$extinction[i]=as.numeric(lm$coefficients[2])
-}
-
-# Test if regression coefficients differ by ldopa
-stats_cont(dfd2$extinction,dfd2$ldopa)
-t.test (dfd2$extinction, mu=0)
-
-
-### Plot Group Extinction ####
+#### Plot Group Extinction ####
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
 grouplabels=c("Placebo",
               "Levodopa")
@@ -837,29 +755,7 @@ c
 
 
 
-###### Linear mixed model analysis #####
-dfld2$z_ratingsalldiff=(scale(dfld2$ratingsalldiff, center = TRUE, scale = TRUE))
-dfld2$zstimrep=(scale(dfld2$stimrep, center = TRUE, scale = TRUE))
-
-lmer1<-lmer(z_ratingsalldiff~ldopa+zstimrep+ldopa:zstimrep+(1+zstimrep|ids),
-            data=dfld2,
-            na.action =na.omit,
-            REML=FALSE,
-            control=lmerControl(optimizer="bobyqa",check.conv.singular="warning"))
-
-AIC(lmer1)
-summary(lmer1)
-anova(lmer1)
-
-#a=summary(lmer1)$coefficients # get coefficients
-#Get predicted values
-dfld2$FITz_ratingsalldiff=predict(lmer1)
-#Get back-transform predicted values
-dfld2$FITratingsalldiff=predict(lmer1)*attr(dfld2$z_ratingsalldiff,"scaled:scale")
-                          +attr(dfld2$z_ratingsalldiff,"scaled:center")
-
-
-### PLOT PLACEBO VS STIMULUS REPETITIONS
+#### PLOT PLACEBO VS STIMULUS REPETITIONS ####
 #dodge <- position_dodge(width=0.5)
 #jdodge <-position_jitterdodge(jitter.width=0.5,dodge.width=0.5)
 groupcolor=c(rgb(.5,.5,.5),rgb(.627,.706,1))
@@ -918,10 +814,7 @@ pr=ggplot(dfld2, aes(x=stimrep,y=ratingsalldiff,color=factor(ldopa),fill=factor(
 pr
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Figure_2.eps",pr,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.5)
 
-
-
-
-### PLOT RATINGS VS STIMULUS REPETITIONS
+#### PLOT RATINGS VS STIMULUS REPETITIONS ####
 groupcolor=c(rgb(.8,.8,.8),rgb(.4,.4,.4),rgb(.627,.706,1),rgb(.392,.443,.910))
 grouplabels=c("NoDopa+Con",
               "NoDopa+Pla",
@@ -973,7 +866,7 @@ tcr
 ggsave(file="/Users/matthiaszunhammer/Dropbox/LDOPA/Paper/Time_Course_Ratings_D2.eps",tcr,width = 6,height = 6,units = c("cm"),dpi = 600,scale=2.5)
 
 
-### Plot Group Side-Effects ####
+#### Plot Group Side-Effects ####
 dodge <- position_dodge(width=0.5)
 jitter <- position_jitter(height=0.2)
 jdodge <-position_jitterdodge(jitter.width=0.5,dodge.width=0.5)
